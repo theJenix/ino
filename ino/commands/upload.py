@@ -35,9 +35,11 @@ class Upload(Command):
         self.e.add_board_model_arg(parser)
         self.e.add_arduino_dist_arg(parser)
 
-    def discover(self):
+    def discover(self,model):
         self.e.find_tool('stty', ['stty'])
-        if platform.system() == 'Linux':
+        if model.startswith('teensy'):
+            self.e.find_arduino_tool('teensy-loader-cli', [])
+        elif platform.system() == 'Linux':
             self.e.find_arduino_tool('avrdude', ['hardware', 'tools'])
 
             conf_places = self.e.arduino_dist_places(['hardware', 'tools'])
@@ -48,9 +50,20 @@ class Upload(Command):
             self.e.find_arduino_file('avrdude.conf', ['hardware', 'tools', 'avr', 'etc'])
     
     def run(self, args):
-        self.discover()
+        print args.board_model
+        self.discover(args.board_model)
         port = args.serial_port or self.e.guess_serial_port()
         board = self.e.board_model(args.board_model)
+
+        if args.board_model.startswith('teensy'):
+            print 'Ready to upload... Press reboot button on teensy to continue'
+            teensy_cli = self.e['teensy-loader-cli']
+            subprocess.call([
+                teensy_cli,
+                '-mmcu=' + board['build']['mcu'],
+                '-w', self.e['hex_path'],
+            ])
+            exit(0)
 
         protocol = board['upload']['protocol']
         if protocol == 'stk500':
