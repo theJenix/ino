@@ -224,7 +224,7 @@ class Build(Command):
 
         for tool_key, tool_binary in toolset:
             self.e.find_arduino_tool(
-                tool_key, ['hardware', 'tools', 'avr', 'bin'], 
+                tool_key, ['hardware', 'tools', '*', 'bin'],
                 items=[tool_binary], human_name=tool_binary)
 
     # Used to parse board options. Finds a sequence of entries in table with the
