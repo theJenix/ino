@@ -36,9 +36,11 @@ class Upload(Command):
         self.e.add_arduino_dist_arg(parser)
 
     def discover(self,model):
+        board = self.e.board_model(model)
         self.e.find_tool('stty', ['stty'])
         if model.startswith('teensy'):
-            self.e.find_arduino_tool('teensy-loader-cli', [])
+            self.e.find_arduino_tool(board['build']['post_compile_script'], ['hardware', 'tools'])
+            self.e.find_arduino_tool(board['upload']['avrdude_wrapper'], ['hardware','tools'])
         elif platform.system() == 'Linux':
             self.e.find_arduino_tool('avrdude', ['hardware', 'tools'])
 
@@ -50,21 +52,33 @@ class Upload(Command):
             self.e.find_arduino_file('avrdude.conf', ['hardware', 'tools', 'avr', 'etc'])
     
     def run(self, args):
-        print args.board_model
         self.discover(args.board_model)
-        port = args.serial_port or self.e.guess_serial_port()
         board = self.e.board_model(args.board_model)
 
         if args.board_model.startswith('teensy'):
-            print 'Ready to upload... Press reboot button on teensy to continue'
-            teensy_cli = self.e['teensy-loader-cli']
+            post_compile = self.e[board['build']['post_compile_script']]
+            reboot = self.e[board['upload']['avrdude_wrapper']]
+            # post_compile script requires:
+            #  .hex filename w/o the extension
+            filename = os.path.splitext(self.e.hex_filename)[0]
+            #  full path to directory with the compiled .hex file 
+            fullpath = os.path.realpath(self.e.build_dir)
+            #  full path to the tools directory
+            tooldir = self.e.find_arduino_dir('', ['hardware', 'tools'])
             subprocess.call([
-                teensy_cli,
-                '-mmcu=' + board['build']['mcu'],
-                '-w', self.e['hex_path'],
+                post_compile,
+                '-file=' + filename,
+                '-path=' + fullpath, 
+                '-tools=' + tooldir
+            ])
+            # reboot to complete the upload
+            # NOTE: this will warn the user if they need to press the reset button
+            subprocess.call([
+                reboot
             ])
             exit(0)
 
+        port = args.serial_port or self.e.guess_serial_port()
         protocol = board['upload']['protocol']
         if protocol == 'stk500':
             # if v1 is not specifid explicitly avrdude will
