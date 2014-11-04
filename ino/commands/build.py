@@ -140,7 +140,9 @@ class Build(Command):
         if not 'menu' in board:
             return
         choices = {}
-        for option in args.menu.split(","):
+        # Menu args specified in ino.ini will already be split into a list
+        splitargs = args.menu if isinstance(args.menu, list) else args.menu.split(",")
+        for option in splitargs: 
             pair = option.split(":")
             if len(pair) < 2:
                 continue
