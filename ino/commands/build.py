@@ -182,7 +182,8 @@ class Build(Command):
         self.e.find_dir('arduino_core_dir', [core_header], [core_place],
                         human_name='Arduino core library')
 
-        if not board['name'].lower().startswith('teensy') and self.e.arduino_lib_version.major:
+#        if not board['name'].lower().startswith('teensy') and self.e.arduino_lib_version.major:
+        if board['name'].lower().startswith('arduino') and self.e.arduino_lib_version.major:
             variants_place = os.path.join(board['_coredir'], 'variants')
             self.e.find_dir('arduino_variants_dir', ['.'], [variants_place],
                             human_name='Arduino variants directory')
@@ -246,6 +247,19 @@ class Build(Command):
 
     def setup_flags(self, args):
         board = self.e.board_model(args.board_model)
+        self.e['incflag'] = board['build']['incflag'] if 'incflag' in board['build'] else '-I'
+        if board['name'].lower().startswith('spark'):
+            self.e['cppflags'] = SpaceList([])
+            self.e['cflags'] = SpaceList([])
+            self.e['cxxflags'] = SpaceList([])
+            self.e['ldflags'] = SpaceList([])
+            self.e['names'] = {
+                'obj': '%s.o',
+                'lib': 'lib%s.a',
+                'cpp': '%s.cpp',
+                'deps': '%s.d',
+            }
+            return
         cpu,mcu = '',''
         if 'cpu' in board['build']:
             cpu = '-mcpu=' + board['build']['cpu']
@@ -262,7 +276,7 @@ class Build(Command):
             mcu,
             '-DF_CPU=' + f_cpu,
             '-DARDUINO=' + str(self.e.arduino_lib_version.as_int()),
-            '-I' + self.e['arduino_core_dir'],
+            self.e.incflag + self.e['arduino_core_dir'],
         ])
         # Add additional flags as specified
         self.e['cppflags'] += SpaceList(shlex.split(args.cppflags))
@@ -274,12 +288,12 @@ class Build(Command):
         if 'pid' in board['build']:
             self.e['cppflags'].append('-DUSB_PID=%s' % board['build']['pid'])
 
-        if board['name'].lower().startswith('teensy'):
+        if not board['name'].lower().startswith('arduino'):
             pass
         elif self.e.arduino_lib_version.major:
             variant_dir = os.path.join(self.e.arduino_variants_dir,
                                        board['build']['variant'])
-            self.e.cppflags.append('-I' + variant_dir)
+            self.e.cppflags.append(self.e.incflag + variant_dir)
 
         self.e['cflags'] = SpaceList(shlex.split(args.cflags))
         self.e['cxxflags'] = SpaceList(shlex.split(args.cxxflags))
@@ -342,11 +356,11 @@ class Build(Command):
         if ret != 0:
             raise Abort("Make failed with code %s" % ret)
 
-    def recursive_inc_lib_flags(self, libdirs):
+    def recursive_inc_lib_flags(self, dashcmd, libdirs):
         flags = SpaceList()
         for d in libdirs:
-            flags.append('-I' + d)
-            flags.extend('-I' + subd for subd in list_subdirs(d, recursive=True, exclude=['examples']))
+            flags.append(dashcmd + d)
+            flags.extend(dashcmd + subd for subd in list_subdirs(d, recursive=True, exclude=['examples']))
         return flags
 
     def _scan_dependencies(self, dir, lib_dirs, inc_flags):
@@ -365,14 +379,13 @@ class Build(Command):
                 for lib, regex in regexes.iteritems():
                     if regex.search(line) and lib != dir:
                         used_libs.add(lib)
-
         return used_libs
 
     def scan_dependencies(self):
         self.e['deps'] = SpaceList()
 
         lib_dirs = [self.e.arduino_core_dir] + list_subdirs(self.e.lib_dir) + list_subdirs(self.e.arduino_libraries_dir)
-        inc_flags = self.recursive_inc_lib_flags(lib_dirs)
+        inc_flags = self.recursive_inc_lib_flags(self.e.incflag, lib_dirs)
 
         # If lib A depends on lib B it have to appear before B in final
         # list so that linker could link all together correctly
@@ -402,7 +415,7 @@ class Build(Command):
                 scanned_libs.add(lib)
 
         self.e['used_libs'] = used_libs
-        self.e['cppflags'].extend(self.recursive_inc_lib_flags(used_libs))
+        self.e['cppflags'].extend(self.recursive_inc_lib_flags(self.e.incflag, used_libs))
 
     def run(self, args):
         self.discover(args)
